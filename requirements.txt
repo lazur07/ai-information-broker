@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+requests
+beautifulsoup4
+python-dotenv
+pymongo
+celery
+redis
+selenium
+lxml
+pydantic
+webdriver-manager
+loguru
+pytz
+pydantic_settings
+aiohttp
+tqdm
