@@ -10,6 +10,8 @@ module.exports = {
         // University of Toronto colors
         'uoft-blue': '#1E3765', // Pantone 655
         'uoft-light-blue': '#6FC7EA', // Pantone 2985
+        // 36Kr blue
+        '36kr-blue': '#0F1640',
         'ios-blue': '#1E3765', // Replaced with U of T Blue
         'ios-blue-dark': '#15294A', // Darker shade of U of T Blue
         'ios-green': '#34C759',

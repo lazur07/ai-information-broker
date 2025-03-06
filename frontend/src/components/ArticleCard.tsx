@@ -30,7 +30,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick }) => {
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
             article.source === 'techcrunch' 
               ? 'bg-ios-green/10 text-ios-green' 
-              : 'bg-ios-blue/10 text-ios-blue'
+              : 'bg-uoft-light-blue/10 text-uoft-light-blue'
           }`}>
             {article.source === 'techcrunch' ? 'TechCrunch' : '36Kr'}
           </span>

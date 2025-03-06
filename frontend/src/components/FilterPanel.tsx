@@ -66,25 +66,45 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onFilter, loading }) => {
         <div className="pt-2">
           <span className="block text-sm font-semibold text-ios-gray-800 mb-2">Sources</span>
           <div className="flex space-x-5">
-            <label className="relative flex items-center space-x-3">
+            <label className="relative flex items-center space-x-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={filters.source.includes("techcrunch")}
                 onChange={() => handleSourceChange("techcrunch")}
                 className="peer sr-only"
               />
-              <div className="w-6 h-6 rounded-full bg-ios-gray-100 peer-checked:bg-uoft-blue relative before:absolute before:w-3 before:h-2 before:border-white before:border-b-2 before:border-r-2 before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-45 before:scale-0 peer-checked:before:scale-100 before:transition duration-150"></div>
+              <div className={`w-6 h-6 rounded-full ${
+                filters.source.includes("techcrunch") 
+                  ? 'bg-uoft-blue' 
+                  : 'bg-ios-gray-100'
+              } flex items-center justify-center transition-colors duration-200`}>
+                {filters.source.includes("techcrunch") && (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </div>
               <span className="text-sm text-ios-gray-700">TechCrunch</span>
             </label>
             
-            <label className="relative flex items-center space-x-3">
+            <label className="relative flex items-center space-x-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={filters.source.includes("36kr")}
                 onChange={() => handleSourceChange("36kr")}
                 className="peer sr-only"
               />
-              <div className="w-6 h-6 rounded-full bg-ios-gray-100 peer-checked:bg-uoft-blue relative before:absolute before:w-3 before:h-2 before:border-white before:border-b-2 before:border-r-2 before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-45 before:scale-0 peer-checked:before:scale-100 before:transition duration-150"></div>
+              <div className={`w-6 h-6 rounded-full ${
+                filters.source.includes("36kr") 
+                  ? 'bg-36kr-blue' 
+                  : 'bg-ios-gray-100'
+              } flex items-center justify-center transition-colors duration-200`}>
+                {filters.source.includes("36kr") && (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </div>
               <span className="text-sm text-ios-gray-700">36Kr</span>
             </label>
           </div>
