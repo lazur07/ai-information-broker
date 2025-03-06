@@ -1,16 +1,57 @@
-.idea
+# Python files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 *.pyc
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Data and logs
+/assets/
+/logs/
+/notebooks/
 *.log
 *.db
 
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
 .DS_Store
 
-/.venv
-/venv
-/.env
-__pycache__/
+# Frontend files
+/frontend/node_modules/
+/frontend/build/
+/frontend/dist/
+/frontend/.cache/
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+/frontend/coverage/
 
-
-/notebooks/
-/assets/
-/logs/
+# Package files
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+sdist/
+var/
+wheels/
+*.manifest
+*.spec
