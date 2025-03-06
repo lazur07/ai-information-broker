@@ -3,19 +3,23 @@
 
 ## Overview
 
-AI Information Broker is a specialized web scraper designed to collect and process AI-related news from multiple sources (currently TechCrunch and 36kr). It automates the process of gathering articles, extracting content, and preparing the data for further processing or publishing.
+AI Information Broker consists of two main components:
+1. **Backend Service**: A specialized web scraper that collects AI news from multiple sources
+2. **Frontend Application**: An iOS-inspired user interface for browsing and analyzing the collected news
 
 ## Features
 
-- **Multi-source scraping**: Collects AI news from both Western (TechCrunch) and Chinese (36kr) sources
+- **Multi-source scraping**: Collects AI news from both Western (TechCrunch) and Chinese (36Kr) sources
 - **Time-based filtering**: Filters articles based on publication date
-- **Parallel processing**: Uses asynchronous operations and thread pools for efficient scraping
+- **Parallel processing**: Uses asynchronous operations for efficient scraping
+- **File management**: Download articles in JSON format for offline analysis
+- **Analytics dashboard**: Visualize data and gain insights from collected articles (coming soon)
 
-## Installation
+## Backend Installation
 
 ### Prerequisites
 
-- Python 3.11 +
+- Python 3.11+
 - Chrome browser
 - ChromeDriver
 
@@ -40,11 +44,37 @@ pip install -r requirements.txt
 
 4. Create a `.env` file with your configuration (if needed)
 
+## Frontend Installation
+
+### Prerequisites
+
+- Node.js 16+ and npm/yarn
+- Backend service running (for data access)
+
+### Setup
+
+1. Navigate to the frontend directory:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+4. The frontend will be available at `http://localhost:5173`
+
 ## Usage
 
 ### Starting the Service
 
-Start the FastAPI server:
+Start the FastAPI backend server:
 
 ```bash
 uvicorn app.main:app --reload
@@ -98,6 +128,40 @@ Response:
 }
 ```
 
+#### List Available JSON Files
+
+```
+GET /data/info/files
+```
+
+Returns a list of available JSON files with metadata:
+```json
+[
+  {
+    "filename": "ai_news_20250305.json",
+    "time_range": "20250301000000 to 20250305235959",
+    "article_count": 42,
+    "file_size": "156 KB",
+    "created": 1709735461
+  },
+  {
+    "filename": "ai_news_20250228.json",
+    "time_range": "20250220000000 to 20250228235959",
+    "article_count": 86,
+    "file_size": "320 KB",
+    "created": 1709304422
+  }
+]
+```
+
+#### Download a Specific JSON File
+
+```
+GET /data/info/files/{filename}
+```
+
+Returns the content of the specified JSON file.
+
 ### Health Check
 
 ```
@@ -116,64 +180,74 @@ Returns:
 
 ```
 .
-├── app/
+├── app/                 # Backend application
 │   ├── __init__.py
 │   ├── main.py          # FastAPI application
 │   ├── router.py        # API route definitions
 │   ├── service.py       # Core scraping service
 │   ├── schema.py        # Pydantic models
 │   └── core.py          # Application settings and lifecycle
+├── frontend/            # Frontend application
+│   ├── public/          # Static files
+│   ├── src/
+│   │   ├── components/  # React components
+│   │   ├── hooks/       # Custom React hooks
+│   │   ├── types/       # TypeScript type definitions
+│   │   ├── App.tsx      # Main application component
+│   │   ├── index.css    # Global styles
+│   │   └── main.tsx     # Application entry point
+│   ├── index.html       # HTML template
+│   ├── package.json     # Frontend dependencies
+│   └── tailwind.config.js # TailwindCSS configuration
 ├── assets/              # Saved JSON data and test resources
 ├── logs/                # Application logs
 ├── .env                 # Environment variables
-├── requirements.txt     # Project dependencies
+├── requirements.txt     # Backend dependencies
 └── README.md            # This file
 ```
 
+## Frontend Design
+
+The frontend is built with a minimalist iOS-inspired design, featuring:
+
+- **Fixed sidebar**: Easy access to filters and analytics from any section
+- **Tabbed navigation**: Seamlessly switch between News, Files, and Analytics views
+- **University of Toronto color scheme**: Primary blue (Pantone 655 - #1E3765) and Light blue (Pantone 2985 - #6FC7EA)
+- **Responsive layout**: Optimized for both desktop and mobile devices
+- **Smooth animations**: Subtle transitions for enhanced user experience
+
+### UI Components
+
+- **News Section**: Browse recent AI news with filtering options
+- **Files Section**: Manage and download saved article collections
+- **Analytics Section**: Visualize data and trends (placeholder for future development)
+
 ## Implementation Details
 
-### Scraping Methods
+### Backend Scraping Methods
 
 - **TechCrunch**: Uses the WordPress REST API to fetch articles directly
 - **36kr**: Uses Selenium with Chrome DevTools Protocol (CDP) to intercept network requests and capture article data
 
-### Safe Driver Management
+### Frontend Technologies
 
-The service uses a context manager to safely handle WebDriver instances:
-
-```python
-@contextmanager
-def safe_driver(self):
-    """Context manager to safely handle WebDriver lifecycle."""
-    driver = None
-    try:
-        driver = self._create_new_driver()
-        yield driver
-    finally:
-        if driver:
-            try:
-                driver.quit()
-                logger.debug("Driver successfully closed")
-            except WebDriverException:
-                logger.warning("Driver already closed or failed to close")
-```
-
-
-### Data Processing Pipeline
-
-1. Request received with time range and sources
-2. Sources are scraped in parallel using async tasks
-3. Articles are filtered based on publication date
-4. Content is extracted for each article with fallback selectors
-5. Results are returned and saved to JSON files
+- **React 18** with TypeScript for type safety
+- **TailwindCSS** for styling with utility-first approach
+- **Vite** for fast development and optimized builds
 
 ## Troubleshooting
 
-### Common Issues
+### Common Backend Issues
 
 - **No articles from 36kr**: The website structure or API may have changed. Check the logs and update the selectors or API endpoints.
 - **WebDriver errors**: Ensure Chrome and ChromeDriver are up to date and compatible.
 - **Rate limiting**: If you see 403 errors, try reducing scraping frequency or implementing a proxy rotation.
+
+### Common Frontend Issues
+
+- **API connection errors**: Ensure the backend server is running on the expected port
+- **Styling issues**: Check browser compatibility for advanced CSS features
+- **Component rendering problems**: Clear browser cache or check console for JavaScript errors
 
 ### Logs
 
@@ -186,13 +260,40 @@ logs/error.log   # Error messages and exceptions
 
 ## Future Enhancements
 
-Potential improvements for the project:
+Planned improvements for the project:
 
-- Add a database to persist articles and avoid re-scraping the same content
-- Implement content deduplication using similarity metrics 
-- Add a translation service for Chinese content
-- Create a simple frontend for browsing and selecting articles
-- Implement a scheduled job to run the scraper at regular intervals
+- **Backend**:
+  - Add a database to persist articles and avoid re-scraping the same content
+  - Implement content deduplication using similarity metrics
+  - Add a translation service for Chinese content
+  - Implement a scheduled job to run the scraper at regular intervals
+
+- **Frontend**:
+  - Add user authentication and personalization
+  - Implement advanced analytics visualizations (word clouds, trend analysis, etc.)
+  - Add article bookmarking and sharing features
+  - Integrate a search function with filtering capabilities
+
+## Building for Production
+
+### Backend
+
+For production deployment, consider using Gunicorn with Uvicorn workers:
+
+```bash
+gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
+```
+
+### Frontend
+
+To create an optimized production build:
+
+```bash
+cd frontend
+npm run build
+```
+
+The build output will be in the `dist` directory, ready to be deployed to a static hosting service.
 
 ## Contributing
 
