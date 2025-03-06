@@ -1,3 +1,4 @@
+// frontend/src/components/ArticleCard.tsx
 import React from 'react';
 import { NewsItem } from '../types';
 

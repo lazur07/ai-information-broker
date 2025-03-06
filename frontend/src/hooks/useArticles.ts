@@ -1,4 +1,4 @@
-// src/hooks/useArticles.ts
+// frontend/src/hooks/useArticles.ts
 import { useState } from 'react';
 import { InfoCollectReq, InfoCollectResp } from '../types';
 

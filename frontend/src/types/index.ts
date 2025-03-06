@@ -1,3 +1,4 @@
+// frontend/src/types/index.ts
 export type NewsSource = "techcrunch" | "36kr";
 
 export interface NewsItem {
@@ -24,3 +25,4 @@ export interface InfoCollectResp {
   total_count: number;
   items: NewsItem[];
 }
+

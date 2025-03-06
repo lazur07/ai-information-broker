@@ -1,3 +1,4 @@
+// frontend/src/components/FilterPanel.tsx
 import React, { useState } from 'react';
 import { InfoCollectReq, NewsSource } from '../types';
 
@@ -46,7 +47,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onFilter, loading }) => {
             max="7"
             value={filters.days_back}
             onChange={e => setFilters({...filters, days_back: parseInt(e.target.value) || 1})}
-            className="block w-full rounded-ios bg-ios-gray-100 border-none px-4 py-3 text-ios-gray-800 focus:ring-2 focus:ring-ios-blue focus:bg-white focus:outline-none transition duration-200"
+            className="block w-full rounded-ios bg-ios-gray-100 border-none px-4 py-3 text-ios-gray-800 focus:ring-2 focus:ring-uoft-blue focus:bg-white focus:outline-none transition duration-200"
           />
         </div>
         
@@ -72,7 +73,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onFilter, loading }) => {
                 onChange={() => handleSourceChange("techcrunch")}
                 className="peer sr-only"
               />
-              <div className="w-6 h-6 rounded-full bg-ios-gray-100 peer-checked:bg-ios-blue relative before:absolute before:w-3 before:h-2 before:border-white before:border-b-2 before:border-r-2 before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-[60%] before:rotate-45 before:scale-0 peer-checked:before:scale-100 before:transition duration-150"></div>
+              <div className="w-6 h-6 rounded-full bg-ios-gray-100 peer-checked:bg-uoft-blue relative before:absolute before:w-3 before:h-2 before:border-white before:border-b-2 before:border-r-2 before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-45 before:scale-0 peer-checked:before:scale-100 before:transition duration-150"></div>
               <span className="text-sm text-ios-gray-700">TechCrunch</span>
             </label>
             
@@ -83,7 +84,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onFilter, loading }) => {
                 onChange={() => handleSourceChange("36kr")}
                 className="peer sr-only"
               />
-              <div className="w-6 h-6 rounded-full bg-ios-gray-100 peer-checked:bg-ios-blue relative before:absolute before:w-3 before:h-2 before:border-white before:border-b-2 before:border-r-2 before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-[60%] before:rotate-45 before:scale-0 peer-checked:before:scale-100 before:transition duration-150"></div>
+              <div className="w-6 h-6 rounded-full bg-ios-gray-100 peer-checked:bg-uoft-blue relative before:absolute before:w-3 before:h-2 before:border-white before:border-b-2 before:border-r-2 before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:rotate-45 before:scale-0 peer-checked:before:scale-100 before:transition duration-150"></div>
               <span className="text-sm text-ios-gray-700">36Kr</span>
             </label>
           </div>
@@ -107,7 +108,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onFilter, loading }) => {
           type="submit"
           disabled={loading}
           className="w-full flex justify-center mt-4 py-3.5 px-4 rounded-ios font-medium text-base text-white
-            bg-ios-blue hover:bg-opacity-90 active:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ios-blue
+            bg-uoft-blue hover:bg-opacity-90 active:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-uoft-blue
             disabled:bg-opacity-70 disabled:cursor-not-allowed transition duration-150"
         >
           {loading ? (

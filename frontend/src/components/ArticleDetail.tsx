@@ -1,3 +1,4 @@
+// frontend/src/components/ArticleDetail.tsx
 import React from 'react';
 import { NewsItem } from '../types';
 
@@ -15,8 +16,8 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({ article, onClose }) => {
             <div className="flex items-center space-x-2">
               <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
                 article.source === 'techcrunch' 
-                  ? 'bg-ios-green/10 text-ios-green' 
-                  : 'bg-ios-blue/10 text-ios-blue'
+                  ? 'bg-uoft-light-blue/10 text-uoft-light-blue' 
+                  : 'bg-uoft-blue/10 text-uoft-blue'
               }`}>
                 {article.source === 'techcrunch' ? 'TechCrunch' : '36Kr'}
               </span>
@@ -59,7 +60,7 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({ article, onClose }) => {
                 href={article.url} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-5 py-2.5 rounded-ios font-medium text-white bg-ios-blue hover:bg-opacity-90 active:bg-opacity-80 transition duration-150"
+                className="inline-flex items-center px-5 py-2.5 rounded-ios font-medium text-white bg-uoft-blue hover:bg-opacity-90 active:bg-opacity-80 transition duration-150"
               >
                 View Original Article
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

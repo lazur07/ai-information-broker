@@ -1,4 +1,4 @@
-// src/components/FilesManager.tsx
+// frontend/src/components/FilesManager.tsx
 import React, { useState, useEffect } from "react";
 
 interface FileInfo {
@@ -95,7 +95,7 @@ const FilesManager: React.FC<FilesManagerProps> = ({ className = "" }) => {
         <button
           onClick={fetchFiles}
           disabled={loading}
-          className="text-xs text-ios-blue hover:text-ios-blue/80 transition-colors"
+          className="text-xs text-uoft-blue hover:text-uoft-blue/80 transition-colors"
         >
           {loading ? "Refreshing..." : "Refresh"}
         </button>
@@ -109,7 +109,7 @@ const FilesManager: React.FC<FilesManagerProps> = ({ className = "" }) => {
 
       {loading && files.length === 0 ? (
         <div className="flex justify-center items-center py-10">
-          <div className="w-6 h-6 border-2 border-ios-blue border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-6 h-6 border-2 border-uoft-blue border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : files.length === 0 ? (
         <div className="text-center py-8 text-ios-gray-500 text-sm">
@@ -138,7 +138,7 @@ const FilesManager: React.FC<FilesManagerProps> = ({ className = "" }) => {
                 <a
                   href={`/data/info/files/${encodeURIComponent(file.filename)}`}
                   download
-                  className="flex-shrink-0 text-xs bg-ios-blue/10 text-ios-blue px-3 py-1.5 rounded-full hover:bg-ios-blue/20 transition-colors"
+                  className="flex-shrink-0 text-xs bg-uoft-blue/10 text-uoft-blue px-3 py-1.5 rounded-full hover:bg-uoft-blue/20 transition-colors"
                 >
                   Download
                 </a>
