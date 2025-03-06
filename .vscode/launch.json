@@ -2,7 +2,7 @@
     "configurations": [
         {
             "name": "FastAPI",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
             "module": "uvicorn",
             "args": [
@@ -11,7 +11,7 @@
                 "0.0.0.0",
                 "--reload"
             ],
-            "jinja": false
+            "pythonPath": "${workspaceFolder}/venv/bin/python"
         }
     ]
 }

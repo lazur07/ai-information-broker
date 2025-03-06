@@ -8,7 +8,9 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from loguru import logger
-
+from contextlib import contextmanager
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import WebDriverException, TimeoutException
 from app.schema import InfoCollectReq, InfoCollectResp, NewsItem, NewsSource
 
 
@@ -58,6 +60,21 @@ class InfoScraper:
         return await loop.run_in_executor(self.executor, lambda: func(*args, **kwargs))
 
     # Helper methods
+
+    @contextmanager
+    def safe_driver(self):
+        """Context manager to safely handle WebDriver lifecycle."""
+        driver = None
+        try:
+            driver = self._create_new_driver()
+            yield driver
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                    logger.debug("Driver successfully closed")
+                except WebDriverException:
+                    logger.warning("Driver already closed or failed to close")
     def _calculate_time_range(self, days_back: int, base_time: datetime):
         """Calculate and store time range based on days_back using a base time."""
         self.end_timestamp = int(base_time.timestamp())
@@ -109,7 +126,7 @@ class InfoScraper:
     def _navigate_to_url(self, driver, url):
         logger.info(f"Navigating to: {url}")
         driver.get(url)
-        time.sleep(random.uniform(2.0, 3.0))
+        time.sleep(random.uniform(5.0, 10.0))
 
     def _scroll_to_bottom(self, driver):
         logger.info("Scrolling to bottom of page")
@@ -196,49 +213,135 @@ class InfoScraper:
     # 36kr scraping methods
     def _scrape_36kr(self, category: str = "AI") -> list[NewsItem]:
         logger.info(f"Scraping 36kr for category: {category}")
-        driver = self._get_driver()
-        self._navigate_to_url(driver, f"https://36kr.com/information/{category}/")
-        for _ in range(3):
-            self._scroll_to_bottom(driver)
-
-        raw_articles = []
-        self._process_36kr_network_logs(driver, raw_articles)
-        logger.info(f"Found {len(raw_articles)} articles from 36kr network logs")
-
-        if raw_articles:
-            content_articles = sorted(
-                [a for a in raw_articles if self.start_timestamp <= a.get("publish_timestamp", 0) <= self.end_timestamp],
-                key=lambda x: x.get("publish_timestamp", 0),
-                reverse=True
-            )
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = {executor.submit(self._fetch_single_article_content, article): article
-                           for article in content_articles}
-                for future in as_completed(futures):
-                    article = futures[future]
-                    content = future.result()
-                    if content:
-                        article["content"] = content
-
-        news_items = [NewsItem(**article) for article in raw_articles]
-        logger.info(f"36kr scraping complete: {len(news_items)} articles found")
-        return news_items
+        
+        with self.safe_driver() as driver:
+            try:
+                # Configure CDP for better network monitoring
+                driver.execute_cdp_cmd('Network.enable', {})
+                
+                # Set up headers that mimic a real browser
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    "Referer": "https://36kr.com/"
+                }
+                driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {"headers": headers})
+                
+                # Navigate with longer timeout and more careful scrolling
+                logger.info(f"Navigating to: https://36kr.com/information/{category}/")
+                driver.get(f"https://36kr.com/information/{category}/")
+                time.sleep(10)  # Give page more time to fully load
+                
+                # Use more gradual scrolling to appear more human-like
+                for i in range(3):
+                    height = driver.execute_script("return document.body.scrollHeight")
+                    for step in range(1, 6):  # Scroll in steps of 20%
+                        scroll_to = height * step / 5
+                        driver.execute_script(f"window.scrollTo(0, {scroll_to});")
+                        time.sleep(1)
+                    time.sleep(3)  # Wait between complete scrolls
+                
+                raw_articles = []
+                self._process_36kr_network_logs(driver, raw_articles)
+                logger.info(f"Found {len(raw_articles)} articles from 36kr network logs")
+                
+                # If no articles found through API, try direct scraping
+                if not raw_articles:
+                    logger.warning("No articles found via API, trying direct element scraping")
+                    article_elements = driver.find_elements(By.CSS_SELECTOR, ".article-item")
+                    
+                    for idx, elem in enumerate(article_elements[:20]):  # Limit to first 20
+                        try:
+                            title_elem = elem.find_element(By.CSS_SELECTOR, ".article-item-title")
+                            title = title_elem.text
+                            url = title_elem.get_attribute("href") or ""
+                            
+                            # Extract other data as available
+                            item_id = url.split("/")[-1] if url else f"manual_{idx}"
+                            timestamp = int(time.time())  # Default to current time
+                            
+                            article = {
+                                "id": f"kr36_{item_id}",
+                                "url": url,
+                                "title": title,
+                                "source": NewsSource.KR36.value,
+                                "author": "",
+                                "summary": "",
+                                "content": "",
+                                "publish_timestamp": timestamp,
+                                "gmt8time": self._format_timestamp(timestamp),
+                            }
+                            raw_articles.append(article)
+                            logger.info(f"Manually extracted article: {title}")
+                        except Exception as e:
+                            logger.error(f"Error extracting article {idx}: {e}")
+                
+                # Process content only for filtered articles
+                if raw_articles:
+                    content_articles = sorted(
+                        [a for a in raw_articles if self.start_timestamp <= a.get("publish_timestamp", 0) <= self.end_timestamp],
+                        key=lambda x: x.get("publish_timestamp", 0),
+                        reverse=True
+                    )[:20]  # Limit to 20 articles
+                    
+                    # Use our existing executor rather than creating a new one
+                    futures = {}
+                    for article in content_articles:
+                        futures[self.executor.submit(self._fetch_single_article_content, article)] = article
+                    
+                    for future in as_completed(futures):
+                        try:
+                            article = futures[future]
+                            content = future.result()
+                            if content:
+                                article["content"] = content
+                        except Exception as e:
+                            logger.error(f"Error processing article content: {e}")
+                
+                news_items = [NewsItem(**article) for article in raw_articles]
+                logger.info(f"36kr scraping complete: {len(news_items)} articles found")
+                return news_items
+                
+            except Exception as e:
+                logger.error(f"Error during 36kr scraping: {e}")
+                return []  # Return empty list rather than crashing
 
     def _fetch_single_article_content(self, article):
         """Fetch content for a single 36kr article using a dedicated driver instance."""
-        local_driver = self._create_new_driver()
-        local_driver.get(article["url"])
-        time.sleep(random.uniform(5.0, 7.0))
-        selector =  "#app > div > div.box-kr-article-new-y > div > div.kr-layout-main.clearfloat > div.main-right > div > div > div > div.article-detail-wrapper-box > div > div.article-left-container > div.article-content > div > div > div.common-width.margin-bottom-20 > div"
-
-        try:
-            element = local_driver.find_element("css selector", selector)
-            content = element.text
-            logger.debug(f"Content found: {len(content)} chars")
-        finally:    
-            local_driver.quit()
-
-
+        with self.safe_driver() as local_driver:
+            try:
+                local_driver.get(article["url"])
+                time.sleep(8)  # Give page more time to load
+                
+                selectors = [
+                    "#app > div > div.box-kr-article-new-y > div > div.kr-layout-main.clearfloat > div.main-right > div > div > div > div.article-detail-wrapper-box > div > div.article-left-container > div.article-content > div > div > div.common-width.margin-bottom-20 > div",
+                    ".article-content",
+                    ".article-detail",
+                    ".kr-article-content",
+                    ".common-width"
+                ]
+                
+                content = ""
+                for selector in selectors:
+                    elements = local_driver.find_elements(By.CSS_SELECTOR, selector)
+                    if elements:
+                        content = elements[0].text
+                        if content and len(content) > 100:  # Only use if meaningful content found
+                            logger.debug(f"Content found with selector '{selector}': {len(content)} chars")
+                            break
+                
+                # If no content found, try to get any text from the page
+                if not content:
+                    body_elements = local_driver.find_elements(By.TAG_NAME, "body")
+                    if body_elements:
+                        content = body_elements[0].text
+                        logger.warning(f"Used body fallback for {article['url']}, content length: {len(content)}")
+                
+                return content
+            except Exception as e:
+                logger.error(f"Error fetching content for article {article.get('url', 'unknown')}: {e}")
+                return ""
+            
     def _process_36kr_network_logs(self, driver, articles):
         logs = driver.get_log("performance")
         found_responses = 0

@@ -15,3 +15,4 @@ pytz
 pydantic_settings
 aiohttp
 tqdm
+playwright
