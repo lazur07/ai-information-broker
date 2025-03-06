@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Information Broker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'ios-blue': '#007AFF',
+              'ios-green': '#34C759',
+              'ios-indigo': '#5856D6',
+              'ios-orange': '#FF9500',
+              'ios-pink': '#FF2D55',
+              'ios-purple': '#AF52DE',
+              'ios-red': '#FF3B30',
+              'ios-teal': '#5AC8FA',
+              'ios-yellow': '#FFCC00',
+              'ios-gray': {
+                50: '#F9F9F9',
+                100: '#F2F2F7',
+                200: '#E5E5EA',
+                300: '#D1D1D6',
+                400: '#C7C7CC',
+                500: '#AEAEB2',
+                600: '#8E8E93',
+                700: '#636366',
+                800: '#48484A',
+                900: '#3A3A3C',
+              },
+            },
+            borderRadius: {
+              'ios': '0.85rem',
+            },
+            boxShadow: {
+              'ios': '0 2px 10px rgba(0, 0, 0, 0.05)',
+              'ios-strong': '0 4px 14px rgba(0, 0, 0, 0.1)',
+            },
+            fontFamily: {
+              sans: [
+                '-apple-system',
+                'BlinkMacSystemFont',
+                'San Francisco',
+                'Helvetica Neue',
+                'Helvetica',
+                'Arial',
+                'sans-serif',
+              ],
+            },
+          }
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

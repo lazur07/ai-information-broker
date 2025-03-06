@@ -1,7 +1,8 @@
 {
+    "version": "0.2.0",
     "configurations": [
         {
-            "name": "FastAPI",
+            "name": "FastAPI Backend",
             "type": "python",
             "request": "launch",
             "module": "uvicorn",
@@ -12,6 +13,21 @@
                 "--reload"
             ],
             "pythonPath": "${workspaceFolder}/venv/bin/python"
+        },
+        {
+            "name": "Frontend Dev Server",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/frontend/src",
+            "preLaunchTask": "npm: dev",
+            "sourceMaps": true
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack",
+            "configurations": ["FastAPI Backend", "Frontend Dev Server"]
         }
     ]
 }
