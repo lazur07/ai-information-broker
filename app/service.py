@@ -1,3 +1,4 @@
+from pathlib import Path
 import requests, html, json, random, time, pytz, re
 from datetime import datetime, timedelta
 from selenium import webdriver
@@ -52,6 +53,7 @@ class InfoScraper:
 
         filtered_items = self._filter_items(all_news_items, self.start_timestamp, self.end_timestamp, req.limit)
         logger.info(f"Returning {len(filtered_items)} filtered articles")
+        self._save_to_json(filtered_items)  # Save the result to a JSON file
         return InfoCollectResp(timestamp=current_time, total_count=len(filtered_items), items=filtered_items)
 
     async def _run_in_executor(self, func, *args, **kwargs):
@@ -75,6 +77,7 @@ class InfoScraper:
                     logger.debug("Driver successfully closed")
                 except WebDriverException:
                     logger.warning("Driver already closed or failed to close")
+    
     def _calculate_time_range(self, days_back: int, base_time: datetime):
         """Calculate and store time range based on days_back using a base time."""
         self.end_timestamp = int(base_time.timestamp())
@@ -152,6 +155,20 @@ class InfoScraper:
         if referer:
             headers["Referer"] = referer
         return headers
+    
+    def _save_to_json(self, items: list[NewsItem]) -> None:
+        """Save the list of items to a JSON file under the assets folder with a filename formatted as 'start time - end time.json'."""
+        assets_dir = Path("assets")
+        assets_dir.mkdir(exist_ok=True)
+        # Format timestamps to avoid colons in filenames (using underscores instead)
+        start_str = datetime.fromtimestamp(self.start_timestamp, self.china_tz).strftime("%Y%m%d%H%M%S")
+        end_str = datetime.fromtimestamp(self.end_timestamp, self.china_tz).strftime("%Y%m%d%H%M%S")
+        filename = assets_dir / f"{start_str} - {end_str}.json"
+            
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump([item.model_dump() for item in items], f, ensure_ascii=False, indent=2)
+    
+        logger.info(f"Saved {len(items)} items to {filename}")
 
     # TechCrunch scraping methods
     def _scrape_techcrunch(self, category: str = "AI", days_back: int = 1) -> list[NewsItem]:

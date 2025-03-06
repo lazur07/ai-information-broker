@@ -11,8 +11,8 @@ settings = get_setting()
 
 app = FastAPI(
     lifespan=lifespan,
-    title="AI Journalist",
-    summary="News scraping microservice for AI-related content",
+    title="AI Information Broker",
+    summary="A microservice for automated scraping, filtering, and processing of AI-related news from global sources.",
     openapi_url=settings.openapi_url,
     docs_url=settings.docs_url,
     redoc_url=settings.redoc_url,
@@ -35,5 +35,5 @@ app.include_router(router)
 async def health_check():
     return {
         "status": "running",
-        "service": "ai-journalist"
+        "service": "ai-information-broker"
     }

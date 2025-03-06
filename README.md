@@ -1,6 +1,5 @@
 # AI Information Broker
 
-A microservice for automated scraping, filtering, and processing of AI-related news from global sources.
 
 ## Overview
 
@@ -16,7 +15,7 @@ AI Information Broker is a specialized web scraper designed to collect and proce
 
 ### Prerequisites
 
-- Python 3.11
+- Python 3.11 +
 - Chrome browser
 - ChromeDriver
 
@@ -51,7 +50,7 @@ Start the FastAPI server:
 uvicorn app.main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`.
+The API will be available at `http://localhost:8000`. You can access the API documentation at `http://localhost:8000/data/docs`.
 
 ### API Endpoints
 
@@ -80,18 +79,18 @@ Parameters:
 Response:
 ```json
 {
-  "timestamp": "2025-03-05 20:45:59",
+  "timestamp": "2025-03-06 11:30:02",
   "total_count": 20,
   "items": [
     {
       "id": "tc_12345",
-      "url": "https://techcrunch.com/2025/03/05/example-article/",
-      "title": "Example Article Title",
+      "url": "https://techcrunch.com/2025/03/05/tapbots-teases-bluesky-app-phoenix/",
+      "title": "Tapbots teases a new Bluesky app, Phoenix, saying it can't 'survive on Mastodon alone'",
       "author": "John Doe",
       "summary": "This is an example summary...",
       "content": "Full article content...",
       "publish_timestamp": 1709665200,
-      "gmt8time": "2025-03-05 05:00:00",
+      "gmt8time": "2025-03-05 22:35:33",
       "source": "techcrunch"
     },
     // More items...
@@ -109,7 +108,7 @@ Returns:
 ```json
 {
   "status": "running",
-  "service": "ai-journalist"
+  "service": "ai-information-broker"
 }
 ```
 
@@ -138,13 +137,35 @@ Returns:
 - **TechCrunch**: Uses the WordPress REST API to fetch articles directly
 - **36kr**: Uses Selenium with Chrome DevTools Protocol (CDP) to intercept network requests and capture article data
 
+### Safe Driver Management
+
+The service uses a context manager to safely handle WebDriver instances:
+
+```python
+@contextmanager
+def safe_driver(self):
+    """Context manager to safely handle WebDriver lifecycle."""
+    driver = None
+    try:
+        driver = self._create_new_driver()
+        yield driver
+    finally:
+        if driver:
+            try:
+                driver.quit()
+                logger.debug("Driver successfully closed")
+            except WebDriverException:
+                logger.warning("Driver already closed or failed to close")
+```
+
+
 ### Data Processing Pipeline
 
 1. Request received with time range and sources
 2. Sources are scraped in parallel using async tasks
 3. Articles are filtered based on publication date
-4. Content is extracted for each article
-5. Results are returned and saved as JSON
+4. Content is extracted for each article with fallback selectors
+5. Results are returned and saved to JSON files
 
 ## Troubleshooting
 
@@ -152,11 +173,27 @@ Returns:
 
 - **No articles from 36kr**: The website structure or API may have changed. Check the logs and update the selectors or API endpoints.
 - **WebDriver errors**: Ensure Chrome and ChromeDriver are up to date and compatible.
+- **Rate limiting**: If you see 403 errors, try reducing scraping frequency or implementing a proxy rotation.
+
+### Logs
+
+Check the logs directory for detailed information about the scraping process:
+
+```
+logs/info.log    # General information and success messages
+logs/error.log   # Error messages and exceptions
+```
+
+## Future Enhancements
+
+Potential improvements for the project:
+
+- Add a database to persist articles and avoid re-scraping the same content
+- Implement content deduplication using similarity metrics 
+- Add a translation service for Chinese content
+- Create a simple frontend for browsing and selecting articles
+- Implement a scheduled job to run the scraper at regular intervals
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.

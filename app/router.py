@@ -11,7 +11,7 @@ router = APIRouter(
 
 @lru_cache()
 def get_info_scraper():
-    return InfoScraper(headless=False)
+    return InfoScraper(headless=True)
 
 @router.post(
     "/scrape", summary="Scrape AI-related news", response_model=InfoCollectResp
