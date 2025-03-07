@@ -98,11 +98,12 @@ class InfoScraper:
                     logger.warning("Driver already closed or failed to close")
 
     def _calculate_time_range(self, days_back: int, base_time: datetime):
-        """Calculate and store time range based on days_back using a base time."""
-        self._end_timestamp = int(base_time.timestamp())
-        self._start_timestamp = int((base_time - timedelta(days=days_back)).timestamp())
+        # Convert base_time to UTC for consistent calculations
+        utc_base_time = base_time.astimezone(pytz.UTC)
+        self._end_timestamp = int(utc_base_time.timestamp())
+        self._start_timestamp = int((utc_base_time - timedelta(days=days_back)).timestamp())
         logger.info(
-            f"Time range: {datetime.fromtimestamp(self._start_timestamp)} to {datetime.fromtimestamp(self._end_timestamp)}"
+            f"Time range: {datetime.fromtimestamp(self._start_timestamp, pytz.UTC)} to {datetime.fromtimestamp(self._end_timestamp, pytz.UTC)} (UTC)"
         )
 
     def _filter_items(
@@ -219,8 +220,8 @@ class InfoScraper:
         params = {
             "meta_key": "articleSection",
             "meta_value": category,
-            "after": start_time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "before": end_time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "after": start_time.astimezone(pytz.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "before": end_time.astimezone(pytz.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "per_page": 30,
             "_embed": "wp:featuredmedia",
             "orderby": "date",
@@ -291,64 +292,123 @@ class InfoScraper:
                     "Network.setExtraHTTPHeaders", {"headers": headers}
                 )
 
-                # Navigate with longer timeout and more careful scrolling
+                # Navigate with longer timeout
                 logger.info(f"Navigating to: https://36kr.com/information/{category}/")
                 driver.get(f"https://36kr.com/information/{category}/")
-                time.sleep(10)  # Give page more time to fully load
+                time.sleep(12.7)  # Give page more time to fully load
 
-                # Use more gradual scrolling to appear more human-like
-                for i in range(3):
-                    height = driver.execute_script("return document.body.scrollHeight")
-                    for step in range(1, 6):  # Scroll in steps of 20%
-                        scroll_to = height * step / 5
-                        driver.execute_script(f"window.scrollTo(0, {scroll_to});")
-                        time.sleep(1)
-                    time.sleep(3)  # Wait between complete scrolls
-
-                raw_articles = []
-                self._process_36kr_network_logs(driver, raw_articles)
-                logger.info(
-                    f"Found {len(raw_articles)} articles from 36kr network logs"
-                )
-
-                # If no articles found through API, try direct scraping
-                if not raw_articles:
-                    logger.warning(
-                        "No articles found via API, trying direct element scraping"
-                    )
-                    article_elements = driver.find_elements(
-                        By.CSS_SELECTOR, ".article-item"
-                    )
-
-                    for idx, elem in enumerate(
-                        article_elements[:20]
-                    ):  # Limit to first 20
+                # First, scrape articles directly from the DOM that might not be captured in network logs
+                dom_articles = []
+                try:
+                    # Find all article items in the feed
+                    article_elements = driver.find_elements(By.CSS_SELECTOR, ".information-flow-item")
+                    logger.info(f"Found {len(article_elements)} article elements via DOM")
+                    
+                    for idx, elem in enumerate(article_elements[:30]):  # Get the first 30 articles
                         try:
-                            title_elem = elem.find_element(
-                                By.CSS_SELECTOR, ".article-item-title"
-                            )
-                            title = title_elem.text
-                            url = title_elem.get_attribute("href") or ""
-
-                            # Extract other data as available
+                            # Find the article title and link - notice they're nested in multiple elements
+                            title_elem = elem.find_element(By.CSS_SELECTOR, ".article-item-title")
+                            title = title_elem.text.strip()
+                            url = title_elem.get_attribute("href")
+                            
+                            # 36kr uses relative URLs, so prepend the domain if needed
+                            if url and url.startswith('/'):
+                                url = f"https://36kr.com{url}"
+                            
+                            # Extract article ID from URL 
                             item_id = url.split("/")[-1] if url else f"manual_{idx}"
-                            timestamp = int(time.time())  # Default to current time
-
+                            
+                            # Get summary if available
+                            try:
+                                summary_elem = elem.find_element(By.CSS_SELECTOR, ".article-item-description")
+                                summary = summary_elem.text.strip()
+                            except:
+                                summary = ""
+                            
+                            # Get author
+                            try:
+                                author_elem = elem.find_element(By.CSS_SELECTOR, ".kr-flow-bar-author")
+                                author = author_elem.text.strip()
+                            except:
+                                author = ""
+                            
+                            # Parse time information - 36kr shows relative times like "16分钟前", "1小时前"
+                            try:
+                                time_elem = elem.find_element(By.CSS_SELECTOR, ".kr-flow-bar-time")
+                                time_text = time_elem.text.strip()
+                                
+                                # Get current time in Beijing timezone
+                                now = datetime.now(self._china_tz)
+                                publish_time = now  # Default to current time
+                                
+                                if "分钟前" in time_text:
+                                    minutes = int(re.search(r'(\d+)分钟前', time_text).group(1))
+                                    publish_time = now - timedelta(minutes=minutes)
+                                elif "小时前" in time_text:
+                                    hours = int(re.search(r'(\d+)小时前', time_text).group(1))
+                                    publish_time = now - timedelta(hours=hours)
+                                elif "昨天" in time_text:
+                                    publish_time = now - timedelta(days=1)
+                                elif "天前" in time_text:
+                                    days = int(re.search(r'(\d+)天前', time_text).group(1))
+                                    publish_time = now - timedelta(days=days)
+                                
+                                publish_ts = int(publish_time.timestamp())
+                                gmt8_time = publish_time.strftime("%Y-%m-%d %H:%M:%S")
+                            except Exception as e:
+                                logger.error(f"Error parsing time for article {idx}: {e}")
+                                publish_ts = int(now.timestamp())
+                                gmt8_time = now.strftime("%Y-%m-%d %H:%M:%S")
+                                
                             article = {
                                 "id": f"kr36_{item_id}",
                                 "url": url,
                                 "title": title,
                                 "source": NewsSource.KR36.value,
-                                "author": "",
-                                "summary": "",
+                                "author": author,
+                                "summary": summary,
                                 "content": "",
-                                "publish_timestamp": timestamp,
-                                "gmt8time": self._format_timestamp(timestamp),
+                                "publish_timestamp": publish_ts,
+                                "gmt8time": gmt8_time,
                             }
-                            raw_articles.append(article)
-                            logger.info(f"Manually extracted article: {title}")
+                            dom_articles.append(article)
+                            logger.info(f"DOM extracted article: '{title}' published at {gmt8_time}")
                         except Exception as e:
-                            logger.error(f"Error extracting article {idx}: {e}")
+                            logger.error(f"Error extracting DOM article {idx}: {e}")
+                except Exception as e:
+                    logger.error(f"Error during DOM scraping: {e}")
+                
+                # Use more gradual scrolling to appear more human-like for API capture
+                for i in range(2):
+                    height = driver.execute_script("return document.body.scrollHeight")
+                    for step in range(1, 6):  # Scroll in steps of 20%
+                        scroll_to = height * step / 5
+                        driver.execute_script(f"window.scrollTo(0, {scroll_to});")
+                        time.sleep(1.7)
+                    time.sleep(3.2)  # Wait between complete scrolls
+
+                # Continue with the network log processing to get articles loaded via API
+                api_articles = []
+                self._process_36kr_network_logs(driver, api_articles)
+                logger.info(f"Found {len(api_articles)} articles from 36kr network logs")
+
+                # Combine articles from both sources and deduplicate by URL
+                raw_articles = []
+                seen_urls = set()
+                
+                # First add DOM articles (they're more likely to be recent)
+                for article in dom_articles:
+                    if article["url"] not in seen_urls and article["url"]:
+                        seen_urls.add(article["url"])
+                        raw_articles.append(article)
+                
+                # Then add API articles that weren't already captured
+                for article in api_articles:
+                    if article["url"] not in seen_urls and article["url"]:
+                        seen_urls.add(article["url"])
+                        raw_articles.append(article)
+                        
+                logger.info(f"Combined {len(raw_articles)} unique articles from DOM and API")
 
                 # Process content only for filtered articles
                 if raw_articles:
@@ -391,13 +451,13 @@ class InfoScraper:
             except Exception as e:
                 logger.error(f"Error during 36kr scraping: {e}")
                 return []  # Return empty list rather than crashing
-
+            
     def _fetch_single_article_content(self, article):
         """Fetch content for a single 36kr article using a dedicated driver instance."""
         with self.safe_driver() as local_driver:
             try:
                 local_driver.get(article["url"])
-                time.sleep(8)  # Give page more time to load
+                time.sleep(random.uniform(8.0, 10.0))# Give page more time to load
 
                 selectors = [
                     "#app > div > div.box-kr-article-new-y > div > div.kr-layout-main.clearfloat > div.main-right > div > div > div > div.article-detail-wrapper-box > div > div.article-left-container > div.article-content > div > div > div.common-width.margin-bottom-20 > div",
