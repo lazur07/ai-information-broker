@@ -2,7 +2,6 @@
 from pathlib import Path
 import json
 import os
-from typing import List, Dict
 from app.core import Setting, get_setting
 from fastapi import HTTPException, Depends
 
@@ -17,7 +16,7 @@ class FileManager:
         # Ensure assets directory exists
         self._settings.assets_dir.mkdir(parents=True, exist_ok=True)
     
-    def list_files(self) -> List[Dict]:
+    def list_files(self) -> list[dict]:
         """Returns a list of available JSON files in the assets directory with metadata."""
         results = []
         assets_dir = self._settings.assets_dir

@@ -1,3 +1,4 @@
+# app/service/info_scraper.py
 from pathlib import Path
 import requests, html, json, random, time, pytz, re
 from datetime import datetime, timedelta

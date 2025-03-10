@@ -1,4 +1,4 @@
-# core.py
+# app/core.py
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
@@ -14,6 +14,8 @@ class Setting(BaseSettings):
     openapi_url: str | None = None  # OpenAPI
     docs_url: str | None = None  # Swagger UI
     redoc_url: str | None = None  # ReDoc UI
+
+    gemini_api_key: str | None = None  # Gemini API key
 
     # Paths
     project_root: Path = Path(__file__).resolve().parent.parent  # Absolute project root
