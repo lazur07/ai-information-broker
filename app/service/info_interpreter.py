@@ -55,8 +55,8 @@ class InfoInterpreter:
         
         # Load the file
         try:
-            # If no filename is provided but article_ids are, find the latest file
-            if not req.filename and req.article_ids:
+            # If no filename is provided but item_ids are, find the latest file
+            if not req.filename and req.item_ids:
                 all_files = sorted(
                     [f for f in self._settings.assets_dir.glob("*.json")],
                     key=lambda f: f.stat().st_mtime, 
@@ -71,7 +71,7 @@ class InfoInterpreter:
                 if not file_path.exists():
                     raise HTTPException(status_code=404, detail=f"File {req.filename} not found")
             else:
-                raise HTTPException(status_code=400, detail="Either filename or article_ids must be provided")
+                raise HTTPException(status_code=400, detail="Either filename or item_ids must be provided")
                 
             with open(file_path, "r", encoding="utf-8") as f:
                 news_data = json.load(f)
@@ -81,10 +81,10 @@ class InfoInterpreter:
             logger.info(f"Loaded {len(news_items)} news items from {file_path.name}")
             
             # Filter items based on article IDs
-            if req.article_ids:
+            if req.item_ids:
                 # If specific article IDs are provided, use only those
-                filtered_items = [item for item in news_items if item.id in req.article_ids]
-                logger.info(f"Filtering by {len(req.article_ids)} specific article IDs, found {len(filtered_items)} matches")
+                filtered_items = [item for item in news_items if item.id in req.item_ids]
+                logger.info(f"Filtering by {len(req.item_ids)} specific article IDs, found {len(filtered_items)} matches")
             else:
                 # If no article IDs provided, use all articles from the file
                 filtered_items = news_items

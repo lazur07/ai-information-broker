@@ -71,17 +71,18 @@ class ReportGenerateReq(BaseModel):
     filename: str = Field(
         default=None, description="Filename of the JSON file containing news items to generate a report from"
     )
-    article_ids: list[str] = Field(
-        default=None, description="List of article IDs to include in the report. If provided, other filters are ignored."
+    item_ids: list[str] = Field(
+        default=None, description="list of article IDs to include in the report. If provided, other filters are ignored."
     )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "article_ids": ["kr36_3195608674008711", "kr36_3195612465577606", "tc_2976670"],
+                "item_ids": ["kr36_3195608674008711", "kr36_3195612465577606", "tc_2976670"],
                 "filename": "20250306131136 - 20250307131136.json",
             }
         }
+
 
 
 class ReportGenerateResp(BaseModel):
