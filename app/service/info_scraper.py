@@ -1,30 +1,49 @@
 # app/service/info_scraper.py
-from pathlib import Path
-import requests, html, json, random, time, pytz, re
+import html
+import json
+import random
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+from functools import partial
+from pathlib import Path
+from typing import List, Optional
+
+import asyncio
+import pytz
+import requests
+from fastapi import Depends
+from loguru import logger
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-import asyncio
-from fastapi import Depends
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import partial
-from loguru import logger
-from contextlib import contextmanager
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import WebDriverException, TimeoutException
-from app.schema import InfoCollectReq, InfoCollectResp, NewsItem, NewsSource
-from app.core import Setting, get_setting
+from sqlmodel import Session, select
+from webdriver_manager.chrome import ChromeDriverManager
+
+from app.core.database import get_session
+from app.core.setting import Setting, get_setting
+from app.model.news_model import News, NewsSource
+from app.schema.news_schema import NewsItem
+from app.schema.scraper_schema import (ContentFetchReq, ContentFetchResp,
+                                     ScrapeReq, ScrapeResp)
 
 
 class InfoScraper:
     """Service for scraping AI news from multiple sources."""
 
-    def __init__(self, headless: bool = True, settings: Setting = Depends(get_setting)):
+    def __init__(
+        self,
+        headless: bool = True,
+        settings: Setting = Depends(get_setting),
+        db: Session = Depends(get_session),
+    ):
         self._headless = headless
         self._settings = settings
+        self._db = db
         self._china_tz = pytz.timezone("Asia/Shanghai")
         # Main driver used for navigation and network log extraction (used serially)
         self._driver = None
@@ -33,10 +52,8 @@ class InfoScraper:
         self._session = requests.Session()  # Reuse the HTTP session
         self._start_timestamp = None
         self._end_timestamp = None
-        # Ensure assets directory exists
-        self._settings.assets_dir.mkdir(parents=True, exist_ok=True)
 
-    async def scrape(self, req: InfoCollectReq) -> InfoCollectResp:
+    async def scrape(self, req: ScrapeReq) -> ScrapeResp:
         """Scrape news from multiple sources in parallel and return a consolidated response."""
         now = datetime.now()
         current_time = self._format_timestamp(int(now.timestamp()))
@@ -66,16 +83,153 @@ class InfoScraper:
         all_news_items = [item for sublist in results for item in sublist]
         logger.info(f"Total articles before filtering: {len(all_news_items)}")
 
+        # Filter and sort items
         filtered_items = self._filter_items(
             all_news_items, self._start_timestamp, self._end_timestamp, req.limit
         )
-        logger.info(f"Returning {len(filtered_items)} filtered articles")
-        self._save_to_json(filtered_items)  # Save the result to a JSON file
-        return InfoCollectResp(
+        logger.info(f"Found {len(filtered_items)} filtered articles")
+        
+        # Save items to database
+        saved_items = await self._save_to_database(filtered_items)
+        
+        # Trigger content fetch for new items (non-blocking)
+        # We don't await this to keep the response time fast
+        asyncio.create_task(self._auto_fetch_content([item.id for item in saved_items]))
+        
+        return ScrapeResp(
             timestamp=current_time,
-            total_count=len(filtered_items),
-            items=filtered_items,
+            total_count=len(saved_items),
+            items=saved_items,
         )
+
+    async def _auto_fetch_content(self, item_ids: list[str]):
+        """Automatically fetch content for newly saved items (only for 36kr articles)."""
+        if not item_ids:
+            return
+            
+        # Filter to only get 36kr articles that need content fetching
+        kr36_ids = []
+        for item_id in item_ids:
+            if item_id.startswith('kr36_'):
+                kr36_ids.append(item_id)
+                
+        if not kr36_ids:
+            return
+            
+        logger.info(f"Auto-fetching content for {len(kr36_ids)} 36kr articles")
+        fetch_req = ContentFetchReq(item_ids=kr36_ids)
+        await self.fetch_content(fetch_req)
+
+    async def fetch_content(self, req: ContentFetchReq) -> ContentFetchResp:
+        """Fetch detailed content for a list of news items (primarily for 36kr)."""
+        logger.info(f"Fetching content for {len(req.item_ids)} news items")
+        
+        # Get news items from database that need content
+        stmt = select(News).where(
+            News.id.in_(req.item_ids),
+            News.content == None
+        )
+        items_to_fetch = self._db.exec(stmt).all()
+        
+        logger.info(f"Found {len(items_to_fetch)} items needing content")
+        
+        if not items_to_fetch:
+            return ContentFetchResp(
+                timestamp=self._format_timestamp(int(datetime.now().timestamp())),
+                total_count=0,
+                items=[],
+            )
+        
+        # Fetch content in parallel (primarily 36kr articles)
+        tasks = []
+        for news in items_to_fetch:
+            if news.source == NewsSource.KR36.value:
+                tasks.append(
+                    self._run_in_executor(
+                        self._fetch_single_article_content, {"url": news.url, "id": news.id}
+                    )
+                )
+        
+        contents = await asyncio.gather(*tasks)
+        updated_items = []
+        
+        # Update database with fetched content
+        for i, content in enumerate(contents):
+            if content:
+                news = items_to_fetch[i]
+                news.content = content
+                self._db.add(news)
+                
+                # Convert SQLModel to dict first, then to Pydantic model
+                news_dict = {
+                    "id": news.id,
+                    "url": news.url,
+                    "title": news.title,
+                    "author": news.author,
+                    "summary": news.summary,
+                    "content": news.content,
+                    "publish_timestamp": news.publish_timestamp,
+                    "gmt8time": news.gmt8time,
+                    "source": news.source,
+                    "is_interpreted": news.is_interpreted
+                }
+                updated_items.append(NewsItem(**news_dict))
+        
+        # Commit all changes at once
+        if updated_items:
+            self._db.commit()
+            logger.info(f"Updated content for {len(updated_items)} articles")
+        
+        return ContentFetchResp(
+            timestamp=self._format_timestamp(int(datetime.now().timestamp())),
+            total_count=len(updated_items),
+            items=updated_items,
+        )
+
+    async def _save_to_database(self, items: list[NewsItem]) -> list[NewsItem]:
+        """Save news items to database, skipping duplicates."""
+        # Get all existing IDs in one query for efficiency
+        existing_ids = {
+            id_tuple[0] 
+            for id_tuple in self._db.exec(select(News.id).where(News.id.in_([item.id for item in items])))
+        }
+        logger.info(f"Found {len(existing_ids)} existing articles in database")
+        
+        # Filter items to only new ones
+        new_items = []
+        saved_items = []
+        
+        for item in items:
+            if item.id in existing_ids:
+                # Item exists in DB, use it in response without modifying
+                stmt = select(News).where(News.id == item.id)
+                existing = self._db.exec(stmt).first()
+                saved_items.append(NewsItem.model_validate(existing))
+                continue
+                
+            # Convert to SQLModel and add to batch
+            db_item = News(
+                id=item.id,
+                url=item.url,
+                title=item.title,
+                author=item.author,
+                summary=item.summary,
+                content=item.content,  # TechCrunch will have content, 36kr will be None
+                publish_timestamp=item.publish_timestamp,
+                gmt8time=item.gmt8time,
+                source=item.source,
+                is_interpreted=False
+            )
+            self._db.add(db_item)
+            new_items.append(db_item)
+            saved_items.append(item)
+        
+        # Commit all new items at once
+        if new_items:
+            self._db.commit()
+            logger.info(f"Saved {len(new_items)} new articles to database")
+        
+        return saved_items
 
     async def _run_in_executor(self, func, *args, **kwargs):
         """Run a blocking function in a thread pool executor."""
@@ -190,25 +344,6 @@ class InfoScraper:
             headers["Referer"] = referer
         return headers
 
-    def _save_to_json(self, items: list[NewsItem]) -> str:
-        """Save the list of items to a JSON file in the assets directory."""
-        start_str = datetime.fromtimestamp(
-            self._start_timestamp, self._china_tz
-        ).strftime("%Y%m%d%H%M%S")
-        end_str = datetime.fromtimestamp(self._end_timestamp, self._china_tz).strftime(
-            "%Y%m%d%H%M%S"
-        )
-        filename = f"{start_str} - {end_str}.json"
-        file_path = self._settings.assets_dir / filename
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(
-                [item.model_dump() for item in items], f, ensure_ascii=False, indent=2
-            )
-
-        logger.info(f"Saved {len(items)} items to {file_path}")
-        return filename
-
     # TechCrunch scraping methods
     def _scrape_techcrunch(
         self, category: str = "AI", days_back: int = 1
@@ -260,6 +395,10 @@ class InfoScraper:
             gmt8_time = dt.astimezone(self._china_tz).strftime("%Y-%m-%d %H:%M:%S")
         else:
             publish_ts, gmt8_time = 0, ""
+            
+        # Get content from WordPress API response directly
+        content = self._clean_text(post.get("content", {}).get("rendered", ""))
+        
         # Enhanced logging: log each article with title and publish time
         logger.info(f"Processed TechCrunch article: '{title}' published at {gmt8_time}")
         return NewsItem(
@@ -268,11 +407,14 @@ class InfoScraper:
             title=title,
             author=str(post.get("author", "")),
             summary=self._clean_text(post.get("excerpt", {}).get("rendered", "")),
-            content=self._clean_text(post.get("content", {}).get("rendered", "")),
+            content=content,  # Set content immediately from WordPress API
             publish_timestamp=publish_ts,
             gmt8time=gmt8_time,
             source=NewsSource.TECHCRUNCH.value,
+            is_interpreted=False
         )
+    
+    # Remove the TechCrunch content fetching method since we now get content directly from the API
 
     # 36kr scraping methods
     def _scrape_36kr(self, category: str = "AI") -> list[NewsItem]:
@@ -368,9 +510,10 @@ class InfoScraper:
                                 "source": NewsSource.KR36.value,
                                 "author": author,
                                 "summary": summary,
-                                "content": "",
+                                "content": None,  # Content will be fetched separately
                                 "publish_timestamp": publish_ts,
                                 "gmt8time": gmt8_time,
+                                "is_interpreted": False
                             }
                             dom_articles.append(article)
                             logger.info(f"DOM extracted article: '{title}' published at {gmt8_time}")
@@ -411,40 +554,6 @@ class InfoScraper:
                         
                 logger.info(f"Combined {len(raw_articles)} unique articles from DOM and API")
 
-                # Process content only for filtered articles
-                if raw_articles:
-                    content_articles = sorted(
-                        [
-                            a
-                            for a in raw_articles
-                            if self._start_timestamp
-                            <= a.get("publish_timestamp", 0)
-                            <= self._end_timestamp
-                        ],
-                        key=lambda x: x.get("publish_timestamp", 0),
-                        reverse=True,
-                    )[
-                        :20
-                    ]  # Limit to 20 articles
-
-                    # Use our existing executor rather than creating a new one
-                    futures = {}
-                    for article in content_articles:
-                        futures[
-                            self._executor.submit(
-                                self._fetch_single_article_content, article
-                            )
-                        ] = article
-
-                    for future in as_completed(futures):
-                        try:
-                            article = futures[future]
-                            content = future.result()
-                            if content:
-                                article["content"] = content
-                        except Exception as e:
-                            logger.error(f"Error processing article content: {e}")
-
                 news_items = [NewsItem(**article) for article in raw_articles]
                 logger.info(f"36kr scraping complete: {len(news_items)} articles found")
                 return news_items
@@ -455,47 +564,29 @@ class InfoScraper:
             
     def _fetch_single_article_content(self, article):
         """Fetch content for a single 36kr article using a dedicated driver instance."""
-        with self.safe_driver() as local_driver:
-            try:
-                local_driver.get(article["url"])
-                time.sleep(random.uniform(8.0, 10.0))# Give page more time to load
+        with self.safe_driver() as driver:
+            driver.get(article["url"])
+            time.sleep(random.uniform(8.0, 10.0))  # Give page time to load
 
-                selectors = [
-                    "#app > div > div.box-kr-article-new-y > div > div.kr-layout-main.clearfloat > div.main-right > div > div > div > div.article-detail-wrapper-box > div > div.article-left-container > div.article-content > div > div > div.common-width.margin-bottom-20 > div",
-                    ".article-content",
-                    ".article-detail",
-                    ".kr-article-content",
-                    ".common-width",
-                ]
+            # Try multiple selectors in order of specificity
+            selectors = [
+                "#app > div > div.box-kr-article-new-y > div > div.kr-layout-main.clearfloat > div.main-right > div > div > div > div.article-detail-wrapper-box > div > div.article-left-container > div.article-content > div > div > div.common-width.margin-bottom-20 > div",
+                ".article-content",
+                ".article-detail",
+                ".kr-article-content",
+                ".common-width",
+                "body"  # Fallback to body if nothing else works
+            ]
 
-                content = ""
-                for selector in selectors:
-                    elements = local_driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements:
-                        content = elements[0].text
-                        if (
-                            content and len(content) > 100
-                        ):  # Only use if meaningful content found
-                            logger.debug(
-                                f"Content found with selector '{selector}': {len(content)} chars"
-                            )
-                            break
-
-                # If no content found, try to get any text from the page
-                if not content:
-                    body_elements = local_driver.find_elements(By.TAG_NAME, "body")
-                    if body_elements:
-                        content = body_elements[0].text
-                        logger.warning(
-                            f"Used body fallback for {article['url']}, content length: {len(content)}"
-                        )
-
-                return content
-            except Exception as e:
-                logger.error(
-                    f"Error fetching content for article {article.get('url', 'unknown')}: {e}"
-                )
-                return ""
+            for selector in selectors:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements and elements[0].text and len(elements[0].text) > 100:
+                    content_length = len(elements[0].text)
+                    logger.info(f"Found content ({content_length} chars) for {article['id']}")
+                    return elements[0].text
+            
+            logger.warning(f"No content found for {article['id']}")
+            return ""
 
     def _process_36kr_network_logs(self, driver, articles):
         logs = driver.get_log("performance")
@@ -546,8 +637,9 @@ class InfoScraper:
             "source": NewsSource.KR36.value,
             "author": material.get("authorName", ""),
             "summary": material.get("summary", ""),
-            "content": "",
+            "content": None,  # Content will be fetched separately
             "publish_timestamp": int(publish_ts),
             "gmt8time": gmt8_time,
+            "is_interpreted": False
         }
         articles.append(article)

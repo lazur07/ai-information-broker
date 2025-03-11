@@ -13,16 +13,15 @@ export interface NewsItem {
   source: NewsSource;
 }
 
-export interface InfoCollectReq {
+export interface ScrapeReq {
   days_back: number;
   category: string;
   source: NewsSource[];
   limit: number;
 }
 
-export interface InfoCollectResp {
+export interface ScrapeResp {
   timestamp: string;
   total_count: number;
   items: NewsItem[];
 }
-
