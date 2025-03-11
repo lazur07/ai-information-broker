@@ -12,7 +12,7 @@ pydantic
 webdriver-manager
 loguru
 pytz
-pydantic_settings
+pydantic_setting
 aiohttp
 tqdm
 google-genai

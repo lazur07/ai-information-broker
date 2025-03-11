@@ -21,10 +21,9 @@ class NewsItem(BaseModel):
     source: NewsSource = Field(
         ..., description="Source of the news (techcrunch or 36kr)"
     ) 
-    is_interpreted: bool = Field(
-        ..., description="Flag indicating if the news item has been interpreted"
+    interpretation: str | None = Field(
+        None, description="Interpretation of the news content"
     )
-
 class NewsListReq(BaseModel):
     limit: int | None = Field(
         default=10, description="Maximum number of news items to return"

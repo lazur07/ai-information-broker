@@ -32,4 +32,6 @@ class News(SQLModel, table=True):
     
     # Source information
     source: NewsSource
-    is_interpreted: bool = Field(default=False)
+    
+    # Interpretation content (replacing is_interpreted)
+    interpretation: str | None = Field(default=None, sa_column=Column(String(65535), nullable=True))

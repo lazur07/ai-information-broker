@@ -1,11 +1,12 @@
-# app/core/settings.py
+# app/core/setting.py
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from pathlib import Path
 
-# settings
+
+# setting
 class Setting(BaseSettings):
     openapi_url: str | None = None  # OpenAPI
     docs_url: str | None = None  # Swagger UI
@@ -27,7 +28,7 @@ class Setting(BaseSettings):
 
     @model_validator(mode="before")
     def ensure_dirs_exist(cls, values):
-        """Ensure directories exist when settings are loaded."""
+        """Ensure directories exist when setting are loaded."""
         assets_dir = values.get("assets_dir")
         if assets_dir:
             assets_dir.mkdir(parents=True, exist_ok=True)
@@ -38,4 +39,5 @@ class Setting(BaseSettings):
 def get_setting() -> Setting:
     return Setting()
 
-settings = get_setting()
+
+setting = get_setting()

@@ -1,4 +1,3 @@
-
 import html
 import json
 import random
@@ -28,8 +27,12 @@ from app.core.database import get_session
 from app.core.setting import Setting, get_setting
 from app.model.news_model import News, NewsSource
 from app.schema.news_schema import NewsItem
-from app.schema.scraper_schema import (ContentFetchReq, ContentFetchResp,
-                                     ScrapeReq, ScrapeResp)
+from app.schema.scraper_schema import (
+    ContentFetchReq,
+    ContentFetchResp,
+    ScrapeReq,
+    ScrapeResp,
+)
 
 
 class InfoScraper:
@@ -37,16 +40,16 @@ class InfoScraper:
     def __init__(
         self,
         headless: bool = True,
-        settings: Setting = Depends(get_setting),
+        setting: Setting = Depends(get_setting),
         db: Session = Depends(get_session),
     ):
         self._headless = headless
-        self._settings = settings
+        self._setting = setting
         self._db = db
         self._china_tz = pytz.timezone("Asia/Shanghai")
         self._driver = None
         self._executor = ThreadPoolExecutor(max_workers=10)
-        self._session = requests.Session()  
+        self._session = requests.Session()
         self._start_timestamp = None
         self._end_timestamp = None
 
@@ -59,26 +62,24 @@ class InfoScraper:
         for source_name in req.source:
             if source_name == NewsSource.TECHCRUNCH.value:
                 tasks.append(
-                    self._run_in_executor(
-                        partial(
-                            self._scrape_techcrunch,
-                            req.category,
-                            days_back=req.days_back,
-                        )
-                    )
+                    self._run_in_executor(partial(self._scrape_techcrunch, req))
                 )
             elif source_name == NewsSource.KR36.value:
-                tasks.append(self._run_in_executor(self._scrape_36kr, req.category))
+                tasks.append(self._run_in_executor(self._scrape_36kr, req))
 
         results = await asyncio.gather(*tasks)
         all_news_items = [item for sublist in results for item in sublist]
 
         filtered_items = self._filter_items(
             all_news_items, self._start_timestamp, self._end_timestamp, req.limit
-        )        
+        )
         saved_items = await self._save_to_database(filtered_items)
-        asyncio.create_task(self._auto_fetch_content([item.id for item in saved_items if not item.content]))
-        
+        asyncio.create_task(
+            self._auto_fetch_content(
+                [item.id for item in saved_items if not item.content]
+            )
+        )
+
         return ScrapeResp(
             timestamp=current_time,
             total_count=len(saved_items),
@@ -92,33 +93,30 @@ class InfoScraper:
         await self.fetch_content(fetch_req)
 
     async def fetch_content(self, req: ContentFetchReq) -> ContentFetchResp:
-        
-        statement = select(News).where(
-            News.id.in_(req.item_ids),
-            News.content == None
-        )
+
+        statement = select(News).where(News.id.in_(req.item_ids), News.content == None)
         items_to_fetch = self._db.exec(statement).all()
-                
+
         if not items_to_fetch:
             return ContentFetchResp(
                 timestamp=self._format_timestamp(int(datetime.now().timestamp())),
                 total_count=0,
                 items=[],
             )
-        
-        
+
         tasks = []
         for news in items_to_fetch:
             if news.source == NewsSource.KR36.value:
                 tasks.append(
                     self._run_in_executor(
-                        self._fetch_single_article_content, {"url": news.url, "id": news.id}
+                        self._fetch_single_article_content,
+                        {"url": news.url, "id": news.id},
                     )
                 )
-        
+
         contents = await asyncio.gather(*tasks)
         updated_items = []
-        
+
         for i, content in enumerate(contents):
             if content:
                 news = items_to_fetch[i]
@@ -134,13 +132,13 @@ class InfoScraper:
                     "publish_timestamp": news.publish_timestamp,
                     "gmt8time": news.gmt8time,
                     "source": news.source,
-                    "is_interpreted": news.is_interpreted
+                    "interpretation": news.interpretation,
                 }
                 updated_items.append(NewsItem(**news_dict))
         if updated_items:
             self._db.commit()
             logger.info(f"Updated content for {len(updated_items)} articles")
-        
+
         return ContentFetchResp(
             timestamp=self._format_timestamp(int(datetime.now().timestamp())),
             total_count=len(updated_items),
@@ -148,11 +146,13 @@ class InfoScraper:
         )
 
     async def _save_to_database(self, items: list[NewsItem]) -> list[NewsItem]:
-        
+
         existing_ids = {
-            id_tuple[0] 
-            for id_tuple in self._db.exec(select(News.id).where(News.id.in_([item.id for item in items])))
-        }        
+            id_tuple[0]
+            for id_tuple in self._db.exec(
+                select(News.id).where(News.id.in_([item.id for item in items]))
+            )
+        }
         new_items = []
         saved_items = []
         for item in items:
@@ -161,18 +161,18 @@ class InfoScraper:
                 existing = self._db.exec(stmt).first()
                 saved_items.append(NewsItem.model_validate(existing))
                 continue
-            
+
             db_item = News(
                 id=item.id,
                 url=item.url,
                 title=item.title,
                 author=item.author,
                 summary=item.summary,
-                content=item.content,  
+                content=item.content,
                 publish_timestamp=item.publish_timestamp,
                 gmt8time=item.gmt8time,
                 source=item.source,
-                is_interpreted=False
+                interpretation=None,
             )
             self._db.add(db_item)
             new_items.append(db_item)
@@ -181,7 +181,7 @@ class InfoScraper:
         if new_items:
             self._db.commit()
             logger.info(f"Saved {len(new_items)} new articles to database")
-        
+
         return saved_items
 
     async def _run_in_executor(self, func, *args, **kwargs):
@@ -206,7 +206,9 @@ class InfoScraper:
     def _calculate_time_range(self, days_back: int, base_time: datetime):
         utc_base_time = base_time.astimezone(pytz.UTC)
         self._end_timestamp = int(utc_base_time.timestamp())
-        self._start_timestamp = int((utc_base_time - timedelta(days=days_back)).timestamp())
+        self._start_timestamp = int(
+            (utc_base_time - timedelta(days=days_back)).timestamp()
+        )
 
     def _filter_items(
         self, items: list[NewsItem], start_time: int, end_time: int, limit: int
@@ -283,18 +285,15 @@ class InfoScraper:
             headers["Referer"] = referer
         return headers
 
-    
-    def _scrape_techcrunch(
-        self, category: str = "AI", days_back: int = 1
-    ) -> list[NewsItem]:
+    def _scrape_techcrunch(self, req: ScrapeReq) -> list[NewsItem]:
         end_time = datetime.now()
-        start_time = end_time - timedelta(days=days_back)
+        start_time = end_time - timedelta(days=req.days_back)
         params = {
             "meta_key": "articleSection",
-            "meta_value": category,
+            "meta_value": req.category,
             "after": start_time.astimezone(pytz.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "before": end_time.astimezone(pytz.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "per_page": 30,
+            "per_page": req.limit,
             "_embed": "wp:featuredmedia",
             "orderby": "date",
             "order": "desc",
@@ -331,24 +330,23 @@ class InfoScraper:
             gmt8_time = dt.astimezone(self._china_tz).strftime("%Y-%m-%d %H:%M:%S")
         else:
             publish_ts, gmt8_time = 0, ""
-            
-        
+
         content = self._clean_text(post.get("content", {}).get("rendered", ""))
-        
+
         return NewsItem(
             id=f"tc_{post.get('id', '')}",
             url=post.get("link", ""),
             title=title,
             author=str(post.get("author", "")),
-            summary=self._clean_text(post.get("excerpt", {}).get("rendered", "")),
-            content=content,  
+            summary=None,
+            content=content,
             publish_timestamp=publish_ts,
             gmt8time=gmt8_time,
             source=NewsSource.TECHCRUNCH.value,
-            is_interpreted=False
+            interpretation=None,
         )
-      
-    def _scrape_36kr(self, category: str = "AI") -> list[NewsItem]:
+
+    def _scrape_36kr(self, req: ScrapeReq) -> list[NewsItem]:
         with self.safe_driver() as driver:
             try:
                 driver.execute_cdp_cmd("Network.enable", {})
@@ -360,59 +358,76 @@ class InfoScraper:
                 driver.execute_cdp_cmd(
                     "Network.setExtraHTTPHeaders", {"headers": headers}
                 )
-                driver.get(f"https://36kr.com/information/{category}/")
-                time.sleep(random.uniform(10.0, 13.0))  
+                driver.get(f"https://36kr.com/information/{req.category}/")
+                time.sleep(random.uniform(10.0, 13.0))
 
                 dom_articles = []
                 try:
-                    article_elements = driver.find_elements(By.CSS_SELECTOR, ".information-flow-item")                    
-                    for idx, elem in enumerate(article_elements[:30]):  
+                    article_elements = driver.find_elements(
+                        By.CSS_SELECTOR, ".information-flow-item"
+                    )
+                    for idx, elem in enumerate(article_elements[: req.limit]):
                         try:
-                            title_elem = elem.find_element(By.CSS_SELECTOR, ".article-item-title")
+                            title_elem = elem.find_element(
+                                By.CSS_SELECTOR, ".article-item-title"
+                            )
                             title = title_elem.text.strip()
                             url = title_elem.get_attribute("href")
-                            
-                            if url and url.startswith('/'):
+
+                            if url and url.startswith("/"):
                                 url = f"https://36kr.com{url}"
-                            
-                            
+
                             item_id = url.split("/")[-1] if url else f"manual_{idx}"
                             try:
-                                summary_elem = elem.find_element(By.CSS_SELECTOR, ".article-item-description")
+                                summary_elem = elem.find_element(
+                                    By.CSS_SELECTOR, ".article-item-description"
+                                )
                                 summary = summary_elem.text.strip()
                             except:
                                 summary = ""
-                            
+
                             try:
-                                author_elem = elem.find_element(By.CSS_SELECTOR, ".kr-flow-bar-author")
+                                author_elem = elem.find_element(
+                                    By.CSS_SELECTOR, ".kr-flow-bar-author"
+                                )
                                 author = author_elem.text.strip()
                             except:
                                 author = ""
-                            
+
                             try:
-                                time_elem = elem.find_element(By.CSS_SELECTOR, ".kr-flow-bar-time")
+                                time_elem = elem.find_element(
+                                    By.CSS_SELECTOR, ".kr-flow-bar-time"
+                                )
                                 time_text = time_elem.text.strip()
                                 now = datetime.now(self._china_tz)
-                                publish_time = now  
+                                publish_time = now
                                 if "分钟前" in time_text:
-                                    minutes = int(re.search(r'(\d+)分钟前', time_text).group(1))
+                                    minutes = int(
+                                        re.search(r"(\d+)分钟前", time_text).group(1)
+                                    )
                                     publish_time = now - timedelta(minutes=minutes)
                                 elif "小时前" in time_text:
-                                    hours = int(re.search(r'(\d+)小时前', time_text).group(1))
+                                    hours = int(
+                                        re.search(r"(\d+)小时前", time_text).group(1)
+                                    )
                                     publish_time = now - timedelta(hours=hours)
                                 elif "昨天" in time_text:
                                     publish_time = now - timedelta(days=1)
                                 elif "天前" in time_text:
-                                    days = int(re.search(r'(\d+)天前', time_text).group(1))
+                                    days = int(
+                                        re.search(r"(\d+)天前", time_text).group(1)
+                                    )
                                     publish_time = now - timedelta(days=days)
-                                
+
                                 publish_ts = int(publish_time.timestamp())
                                 gmt8_time = publish_time.strftime("%Y-%m-%d %H:%M:%S")
                             except Exception as e:
-                                logger.error(f"Error parsing time for article {idx}: {e}")
+                                logger.error(
+                                    f"Error parsing time for article {idx}: {e}"
+                                )
                                 publish_ts = int(now.timestamp())
                                 gmt8_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                                
+
                             article = {
                                 "id": f"kr36_{item_id}",
                                 "url": url,
@@ -420,38 +435,38 @@ class InfoScraper:
                                 "source": NewsSource.KR36.value,
                                 "author": author,
                                 "summary": summary,
-                                "content": None,  
+                                "content": None,
                                 "publish_timestamp": publish_ts,
                                 "gmt8time": gmt8_time,
-                                "is_interpreted": False
+                                "interpretation": None,
                             }
                             dom_articles.append(article)
-                            logger.info(f"DOM extracted article: '{title}' published at {gmt8_time}")
                         except Exception as e:
                             logger.error(f"Error extracting DOM article {idx}: {e}")
                 except Exception as e:
                     logger.error(f"Error during DOM scraping: {e}")
-                
-                for i in range(2):
+
+                for _ in range(2):
                     height = driver.execute_script("return document.body.scrollHeight")
-                    for step in range(1, 6):  
+                    for step in range(1, 6):
                         scroll_to = height * step / 5
                         driver.execute_script(f"window.scrollTo(0, {scroll_to});")
                         time.sleep(1.7)
-                    time.sleep(3.2)  
+                    time.sleep(3.2)
 
                 api_articles = []
                 self._process_36kr_network_logs(driver, api_articles)
-                logger.info(f"Found {len(api_articles)} articles from 36kr network logs")
-
+                logger.info(
+                    f"Found {len(api_articles)} articles from 36kr network logs"
+                )
+                # Combine articles and remove duplicates using dictionary keys (URL as key)
                 raw_articles = []
                 seen_urls = set()
-                
                 for article in dom_articles:
                     if article["url"] not in seen_urls and article["url"]:
                         seen_urls.add(article["url"])
                         raw_articles.append(article)
-                  
+
                 for article in api_articles:
                     if article["url"] not in seen_urls and article["url"]:
                         seen_urls.add(article["url"])
@@ -462,12 +477,12 @@ class InfoScraper:
 
             except Exception as e:
                 logger.error(f"Error during 36kr scraping: {e}")
-                return []  
-            
+                return []
+
     def _fetch_single_article_content(self, article):
         with self.safe_driver() as driver:
             driver.get(article["url"])
-            time.sleep(random.uniform(8.0, 10.0))  
+            time.sleep(random.uniform(8.0, 10.0))
 
             selectors = [
                 "#app > div > div.box-kr-article-new-y > div > div.kr-layout-main.clearfloat > div.main-right > div > div > div > div.article-detail-wrapper-box > div > div.article-left-container > div.article-content > div > div > div.common-width.margin-bottom-20 > div",
@@ -475,16 +490,18 @@ class InfoScraper:
                 ".article-detail",
                 ".kr-article-content",
                 ".common-width",
-                "body"  
+                "body",
             ]
 
             for selector in selectors:
                 elements = driver.find_elements(By.CSS_SELECTOR, selector)
                 if elements and elements[0].text and len(elements[0].text) > 100:
                     content_length = len(elements[0].text)
-                    logger.info(f"Found content ({content_length} chars) for {article['id']}")
+                    logger.info(
+                        f"Found content ({content_length} chars) for {article['id']}"
+                    )
                     return elements[0].text
-            
+
             logger.warning(f"No content found for {article['id']}")
             return ""
 
@@ -527,7 +544,7 @@ class InfoScraper:
             publish_ts = publish_ts / 1000
         gmt8_time = self._format_timestamp(publish_ts)
         title = material.get("widgetTitle", "")
-        
+
         logger.info(f"Processed 36kr article: '{title}' published at {gmt8_time}")
         article = {
             "id": f"kr36_{item_id}",
@@ -536,9 +553,9 @@ class InfoScraper:
             "source": NewsSource.KR36.value,
             "author": material.get("authorName", ""),
             "summary": material.get("summary", ""),
-            "content": None,  
+            "content": None,
             "publish_timestamp": int(publish_ts),
             "gmt8time": gmt8_time,
-            "is_interpreted": False
+            "interpretation": None,
         }
         articles.append(article)
