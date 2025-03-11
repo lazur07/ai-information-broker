@@ -26,7 +26,7 @@ class NewsItem(BaseModel):
     )
 
 class NewsListReq(BaseModel):
-    limit: int = Field(
+    limit: int | None = Field(
         default=10, description="Maximum number of news items to return"
     )
     offset: int = Field(
@@ -50,10 +50,7 @@ class NewsListReq(BaseModel):
             "example": {
                 "limit": 10,
                 "offset": 0,
-                "source": "techcrunch",
-                "category": "AI",
-                "start_date": "2023-01-01T00:00:00",
-                "end_date": "2023-12-31T23:59:59"
+                "source": "techcrunch"
             }
         }
 

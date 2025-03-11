@@ -1,5 +1,5 @@
 # app/service/news_manager.py
-from typing import List, Optional, Tuple
+from typing import List
 
 from fastapi import Depends, HTTPException
 from loguru import logger
@@ -24,14 +24,23 @@ class NewsManager:
         if not news:
             logger.warning(f"News with ID {news_id} not found")
             raise HTTPException(status_code=404, detail=f"News item with ID {news_id} not found")
-            
-        return NewsItem.model_validate(news)
+        
+        # Convert SQLModel to dict, then to Pydantic model    
+        news_dict = {
+            "id": news.id,
+            "url": news.url,
+            "title": news.title,
+            "author": news.author,
+            "summary": news.summary,
+            "content": news.content,
+            "publish_timestamp": news.publish_timestamp,
+            "gmt8time": news.gmt8time,
+            "source": news.source,
+            "is_interpreted": news.is_interpreted
+        }
+        return NewsItem(**news_dict)
 
     def list_news(self, req: NewsListReq) -> NewsListResp:
-        """
-        List news items with pagination and filtering.
-        Returns a NewsListResp with items and total count.
-        """
         logger.info(f"Listing news with parameters: {req.model_dump()}")
         
         # Build the base query
@@ -76,8 +85,25 @@ class NewsManager:
         news_items = self._db.exec(query).all()
         logger.info(f"Found {len(news_items)} news items (total: {total_count})")
         
-        # Convert to Pydantic models and return formatted response
+        # Convert SQLModel to Pydantic model using dictionary conversion
+        pydantic_items = []
+        for item in news_items:
+            item_dict = {
+                "id": item.id,
+                "url": item.url,
+                "title": item.title,
+                "author": item.author,
+                "summary": item.summary,
+                "content": item.content,
+                "publish_timestamp": item.publish_timestamp,
+                "gmt8time": item.gmt8time,
+                "source": item.source,
+                "is_interpreted": item.is_interpreted
+            }
+            pydantic_items.append(NewsItem(**item_dict))
+        
+        # Return formatted response
         return NewsListResp(
             total_count=total_count,
-            items=[NewsItem.model_validate(item) for item in news_items]
+            items=pydantic_items
         )
